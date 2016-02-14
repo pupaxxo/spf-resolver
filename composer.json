@@ -1,0 +1,23 @@
+{
+    "name": "rephlux/spf-resolver",
+    "description": "SPF Resolver for PHP",
+    "minimum-stability": "stable",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Chris van Daele",
+            "email": "engine_no9@gmx.net"
+        }
+    ],
+    "require": {
+        "php": ">=5.5.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "~4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rephlux\\SpfResolver\\": "src/"
+        }
+    }
+}
