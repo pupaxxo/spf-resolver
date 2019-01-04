@@ -50,26 +50,24 @@ class SpfResolver
      *
      * @param string $hostname
      *
-     * @return array
+     * @return array|bool
      */
     public function resolveDomain($hostname)
     {
         $dnsData = $this->getDnsRecord($hostname);
-
-        if ($this->hasDnsData($dnsData) === false) {
+        if (false === $this->hasDnsData($dnsData)) {
             return false;
         }
-
         $this->spfData = $this->extractSpfRecord($dnsData);
-
-        if ($this->hasValidSpfData($this->spfData) === false) {
+        if (false === $this->hasValidSpfData($this->spfData)) {
             return $this->getIpAddresses();
         }
 
-        return $this->extractIpAdresses()
-                    ->followRedirects()
-                    ->extractInclude()
-                    ->getIpAddresses();
+        return $this->extractIpAddresses()
+            ->followRedirects()
+            ->extractInclude()
+            ->extractAMXAddress($hostname)
+            ->getIpAddresses();
     }
 
     /**
@@ -106,7 +104,7 @@ class SpfResolver
     }
 
     /**
-     * Resets the internal ipAddresses array to an empty array
+     * Resets the internal ipAddresses array to an empty array.
      */
     public function resetResolvedIPs()
     {
@@ -122,7 +120,7 @@ class SpfResolver
      */
     protected function hasDnsData(array $dnsData)
     {
-        return ($dnsData && !empty(array_column($dnsData, 'txt')));
+        return $dnsData && !empty(array_column($dnsData, 'txt'));
     }
 
     /**
@@ -142,7 +140,7 @@ class SpfResolver
      *
      * @return $this
      */
-    protected function extractIpAdresses()
+    protected function extractIpAddresses()
     {
         $this->ipAddresses = array_merge($this->ipAddresses,
             $this->extractDnsData(self::$regexIpAddress, $this->getSpfData())
@@ -152,7 +150,43 @@ class SpfResolver
     }
 
     /**
-     * Follow the redirects to other ip adresses.
+     * Extract ip addresses from dns data.
+     *
+     * @param string $hostname Current domain
+     *
+     * @return $this
+     */
+    protected function extractAMXAddress($hostname)
+    {
+        $ipsA = [];
+        $ipsMX = [];
+
+        if (false !== strpos($this->getSpfData(), ' a ')) {
+            $ipsA = array_map(function ($record) {
+                return $record['ip'];
+            }, dns_get_record($hostname, DNS_A));
+        }
+
+        if (false !== strpos($this->getSpfData(), ' mx ')) {
+            $ipsMX = array_reduce(array_map(function ($record) {
+                return filter_var($record['target'], FILTER_VALIDATE_IP) ?
+                        [$record['target']]
+                    :
+                        array_map(function ($record) {
+                            return $record['ip'];
+                        }, dns_get_record($record['target'], DNS_A));
+            }, dns_get_record($hostname, DNS_MX)), function ($carry, $item) {
+                return array_merge($carry, $item);
+            }, []);
+        }
+
+        $this->ipAddresses = array_merge($this->ipAddresses, $ipsA, $ipsMX);
+
+        return $this;
+    }
+
+    /**
+     * Follow the redirects to other ip addresses.
      *
      * @return $this
      */
@@ -208,9 +242,9 @@ class SpfResolver
     protected function extractSpfRecord($dnsData)
     {
         $pattern = preg_quote('spf1', '~');
-        $data    = array_column($dnsData, 'txt');
+        $data = array_column($dnsData, 'txt');
 
-        return implode(' ', preg_grep('~' . $pattern . '~', $data));
+        return implode(' ', preg_grep('~'.$pattern.'~', $data));
     }
 
     /**
